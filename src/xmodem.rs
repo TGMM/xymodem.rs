@@ -134,6 +134,8 @@ impl Xmodem {
         let mut handled_first_packet = false;
         dbg!("Starting XMODEM receive");
         loop {
+            // Remember that buf_stream.get_mut() gets the original
+            // Read + Write, so that way we can write to it
             (buf_stream.get_mut().write(&[match self.checksum_mode {
                 Checksum::Standard => NAK,
                 Checksum::CRC16 => CRC,
