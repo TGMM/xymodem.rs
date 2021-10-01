@@ -10,7 +10,6 @@ description = "An implementation of the XMODEM file-transfer protocol."
 [dependencies]
 log = "^0.3"
 crc16 = "^0.3"
-bufstream = "0.1"
 
 [dev-dependencies]
 tempfile = "^2.0"

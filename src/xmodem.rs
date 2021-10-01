@@ -1,6 +1,5 @@
-use bufstream::BufStream;
 use std::convert::From;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 
 // TODO: Send CAN byte after too many errors
 // TODO: Handle CAN bytes while sending
@@ -100,11 +99,11 @@ impl Xmodem {
     pub fn send<D: Read + Write, R: Read>(&mut self, dev: &mut D, stream: &mut R) -> Result<()> {
         self.errors = 0;
 
-        debug!("Starting XMODEM transfer");
+        dbg!("Starting XMODEM transfer");
         (self.start_send(dev))?;
-        debug!("First byte received. Sending stream.");
+        dbg!("First byte received. Sending stream.");
         (self.send_stream(dev, stream))?;
-        debug!("Sending EOT");
+        dbg!("Sending EOT");
         (self.finish_send(dev))?;
 
         Ok(())
@@ -128,19 +127,42 @@ impl Xmodem {
         outstream: &mut W,
         checksum: Checksum,
     ) -> Result<()> {
-        let buf_dev = &mut BufStream::new(dev);
+        let buf_stream = &mut BufReader::new(dev);
+
         self.errors = 0;
         self.checksum_mode = checksum;
         let mut handled_first_packet = false;
-        debug!("Starting XMODEM receive");
-        (buf_dev.write(&[match self.checksum_mode {
-            Checksum::Standard => NAK,
-            Checksum::CRC16 => CRC,
-        }]))?;
-        debug!("NCG sent. Receiving stream.");
+        dbg!("Starting XMODEM receive");
+        loop {
+            (buf_stream.get_mut().write(&[match self.checksum_mode {
+                Checksum::Standard => NAK,
+                Checksum::CRC16 => CRC,
+            }])?);
+
+            match buf_stream.fill_buf() {
+                Ok(v) => {
+                    if v[0] == SOH || v[0] == STX {
+                        break;
+                    } else {
+                        buf_stream.consume(1);
+                    }
+                }
+                Err(_err) => {
+                    self.initial_errors += 1;
+                    if self.initial_errors > self.max_initial_errors {
+                        eprint!(
+                            "Exhausted max retries ({}) while waiting for SOH or STX",
+                            self.max_initial_errors
+                        );
+                        return Err(Error::ExhaustedRetries);
+                    }
+                }
+            }
+        }
+        dbg!("NCG sent. Receiving stream.");
         let mut packet_num: u8 = 1;
         loop {
-            match get_byte_timeout(buf_dev)? {
+            match get_byte_timeout(buf_stream)? {
                 bt @ Some(SOH) | bt @ Some(STX) => {
                     handled_first_packet = true;
                     // Handle next packet
@@ -149,42 +171,42 @@ impl Xmodem {
                         Some(STX) => 1024,
                         _ => 0, // Why does the compiler need this?
                     };
-                    let pnum = (get_byte(buf_dev))?; // specified packet number
-                    let pnum_1c = (get_byte(buf_dev))?; // same, 1's complemented
-                                                        // We'll respond with cancel later if the packet number is wrong
+                    let pnum = (get_byte(buf_stream))?; // specified packet number
+                    let pnum_1c = (get_byte(buf_stream))?; // same, 1's complemented
+                                                           // We'll respond with cancel later if the packet number is wrong
                     let cancel_packet = packet_num != pnum || (255 - pnum) != pnum_1c;
                     let mut data: Vec<u8> = Vec::new();
                     data.resize(packet_size, 0);
-                    (buf_dev.read_exact(&mut data))?;
+                    (buf_stream.read_exact(&mut data))?;
                     let success = match self.checksum_mode {
                         Checksum::Standard => {
-                            let recv_checksum = (get_byte(buf_dev))?;
+                            let recv_checksum = (get_byte(buf_stream))?;
                             calc_checksum(&data) == recv_checksum
                         }
                         Checksum::CRC16 => {
-                            let recv_checksum =
-                                (((get_byte(buf_dev))? as u16) << 8) + (get_byte(buf_dev))? as u16;
+                            let recv_checksum = (((get_byte(buf_stream))? as u16) << 8)
+                                + (get_byte(buf_stream))? as u16;
                             calc_crc(&data) == recv_checksum
                         }
                     };
 
                     if cancel_packet {
-                        (buf_dev.write(&[CAN]))?;
-                        (buf_dev.write(&[CAN]))?;
+                        (buf_stream.get_mut().write(&[CAN]))?;
+                        (buf_stream.get_mut().write(&[CAN]))?;
                         return Err(Error::Canceled);
                     }
                     if success {
                         packet_num = packet_num.wrapping_add(1);
-                        (buf_dev.write(&[ACK]))?;
+                        (buf_stream.get_mut().write(&[ACK]))?;
                         (outstream.write_all(&data))?;
                     } else {
-                        (buf_dev.write(&[NAK]))?;
+                        (buf_stream.get_mut().write(&[NAK]))?;
                         self.errors += 1;
                     }
                 }
                 Some(EOT) => {
                     // End of file
-                    (buf_dev.write(&[ACK]))?;
+                    (buf_stream.get_mut().write(&[ACK]))?;
                     break;
                 }
                 Some(_) => {
@@ -200,7 +222,7 @@ impl Xmodem {
                 }
             }
             if self.errors >= self.max_errors {
-                error!(
+                eprint!(
                     "Exhausted max retries ({}) while waiting for ACK for EOT",
                     self.max_errors
                 );
@@ -215,12 +237,12 @@ impl Xmodem {
             match (get_byte_timeout(dev))? {
                 Some(c) => match c {
                     NAK => {
-                        debug!("Standard checksum requested");
+                        dbg!("Standard checksum requested");
                         self.checksum_mode = Checksum::Standard;
                         return Ok(());
                     }
                     CRC => {
-                        debug!("16-bit CRC requested");
+                        dbg!("16-bit CRC requested");
                         self.checksum_mode = Checksum::CRC16;
                         return Ok(());
                     }
@@ -236,7 +258,7 @@ impl Xmodem {
             self.errors += 1;
 
             if cancels >= 2 {
-                error!(
+                eprint!(
                     "Transmission canceled: received two cancel (CAN) bytes \
                         at start of XMODEM transfer"
                 );
@@ -244,7 +266,7 @@ impl Xmodem {
             }
 
             if self.errors >= self.max_errors {
-                error!(
+                eprint!(
                     "Exhausted max retries ({}) at start of XMODEM transfer.",
                     self.max_errors
                 );
@@ -262,7 +284,7 @@ impl Xmodem {
             let mut buff = vec![self.pad_byte; self.block_length as usize + 3];
             let n = (stream.read(&mut buff[3..]))?;
             if n == 0 {
-                debug!("Reached EOF");
+                dbg!("Reached EOF");
                 return Ok(());
             }
 
@@ -286,13 +308,13 @@ impl Xmodem {
                 }
             }
 
-            debug!("Sending block {}", block_num);
+            dbg!("Sending block {}", block_num);
             (dev.write_all(&buff))?;
 
             match (get_byte_timeout(dev))? {
                 Some(c) => {
                     if c == ACK {
-                        debug!("Received ACK for block {}", block_num);
+                        dbg!("Received ACK for block {}", block_num);
                         continue;
                     } else {
                         warn!("Expected ACK, got {}", c);
@@ -305,7 +327,7 @@ impl Xmodem {
             self.errors += 1;
 
             if self.errors >= self.max_errors {
-                error!(
+                eprint!(
                     "Exhausted max retries ({}) while sending block {} in XMODEM transfer",
                     self.max_errors, block_num
                 );
@@ -333,7 +355,7 @@ impl Xmodem {
             self.errors += 1;
 
             if self.errors >= self.max_errors {
-                error!(
+                eprint!(
                     "Exhausted max retries ({}) while waiting for ACK for EOT",
                     self.max_errors
                 );
