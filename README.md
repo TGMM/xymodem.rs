@@ -1,13 +1,10 @@
-# XMODEM.rs
+# XYMODEM.rs
 
-[![Build Status](https://travis-ci.org/awelkie/xmodem.rs.svg?branch=master)](https://travis-ci.org/awelkie/xmodem.rs)
-[![](https://img.shields.io/crates/v/xmodem.svg)](https://crates.io/crates/xmodem)
-[![](https://img.shields.io/crates/l/xmodem.svg)](https://crates.io/crates/xmodem)
+The XMODEM and YMODEM protocols in Rust.
 
-The XMODEM protocol in Rust
+The YMODEM implementation uses code from the original xmodem.rs [crate](https://crates.io/crates/xmodem) by awelkie.
+The XMODEM contained in this package is the same as the [original code](https://github.com/awelkie/xmodem.rs) with some minor tweaks.
 
 # Testing
 The tests require the binaries found in the `lrzsz` package.
-
-# Rust channels
-Currently only the beta and nightly channels are supported (stable support is waiting on [#27585](https://github.com/rust-lang/rust/issues/27585))
+Currently, tests only work for XModem.
