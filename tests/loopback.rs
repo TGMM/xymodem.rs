@@ -1,11 +1,11 @@
 //! Test against own implementation
 extern crate rand;
 extern crate tempfile;
-extern crate xymodem;
+extern crate ymodem;
 
 use std::io::{self, ErrorKind, Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use xymodem::xmodem::{BlockLength, Checksum, Xmodem};
+use ymodem::xmodem::{BlockLength, Checksum, Xmodem};
 
 struct BidirectionalPipe {
     pin: Receiver<u8>,

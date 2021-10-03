@@ -1,13 +1,13 @@
 //! Test against the `sx` program, and itself
 extern crate rand;
 extern crate tempfile;
-extern crate xymodem;
+extern crate ymodem;
 
 use rand::{thread_rng, Rng};
 use std::io::{self, Read, Seek, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use tempfile::NamedTempFile;
-use xymodem::xmodem::{BlockLength, Checksum, Xmodem};
+use ymodem::xmodem::{BlockLength, Checksum, Xmodem};
 
 struct ChildStdInOut {
     stdin: ChildStdin,

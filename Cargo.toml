@@ -1,6 +1,6 @@
 [package]
-name = "xymodem"
-version = "0.1.3"
+name = "ymodem"
+version = "0.1.0"
 authors = ["Allen Welkie <allen.welkie@gmail.com>", "Eliud de León <eliud.deleon.10@gmail.com>"]
 keywords = ["xmodem", "ymodem", "serial"]
 repository = "https://github.com/TGMM/xymodem.rs"
