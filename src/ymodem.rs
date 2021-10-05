@@ -74,7 +74,28 @@ impl Ymodem {
         self.errors = 0;
         dbg!("Starting YMODEM receive");
         // Initialize transfer
-        self.get_byte_count_retries(dev, SOH, Some(CRC))?;
+        loop {
+            (dev.write(&[CRC])?);
+
+            match get_byte_timeout(dev) {
+                Ok(v) => {
+                    // The first SOH is used to initialize the transfer
+                    if v == Some(SOH) {
+                        break;
+                    }
+                }
+                Err(_err) => {
+                    self.initial_errors += 1;
+                    if self.initial_errors > self.max_initial_errors {
+                        eprint!(
+                            "Exhausted max retries ({}) while waiting for SOH or STX",
+                            self.max_initial_errors
+                        );
+                        return Err(Error::ExhaustedRetries);
+                    }
+                }
+            }
+        }
         // First packet
         // In YModem the header packet is 0
         let mut packet_num: u8 = 0;
@@ -335,8 +356,53 @@ impl Ymodem {
 
         (dev.write_all(&buff))?;
 
-        self.get_byte_count_retries(dev, ACK, None)?;
-        self.get_byte_count_retries(dev, CRC, None)?;
+        loop {
+            match (get_byte_timeout(dev))? {
+                Some(c) => {
+                    if c == ACK {
+                        dbg!("Received ACK for start frame");
+                        break;
+                    } else {
+                        warn!("Expected ACK, got {}", c);
+                    }
+                    // TODO handle CAN bytes
+                }
+                None => warn!("Timeout waiting for ACK for start frame"),
+            }
+
+            self.errors += 1;
+            if self.errors >= self.max_errors {
+                eprint!(
+                    "Exhausted max retries ({}) while sending start frame in YMODEM transfer",
+                    self.max_errors
+                );
+                return Err(Error::ExhaustedRetries);
+            }
+        }
+
+        loop {
+            match (get_byte_timeout(dev))? {
+                Some(c) => {
+                    if c == CRC {
+                        dbg!("Received C for start frame");
+                        break;
+                    } else {
+                        warn!("Expected C, got {}", c);
+                    }
+                    // TODO handle CAN bytes
+                }
+                None => warn!("Timeout waiting for C for start frame"),
+            }
+
+            self.errors += 1;
+            if self.errors >= self.max_errors {
+                eprint!(
+                    "Exhausted max retries ({}) while sending start frame in YMODEM transfer",
+                    self.max_errors
+                );
+                return Err(Error::ExhaustedRetries);
+            }
+        }
 
         return Ok(());
     }
@@ -400,9 +466,80 @@ impl Ymodem {
     }
 
     fn finish_send<D: Read + Write>(&mut self, dev: &mut D) -> Result<()> {
-        self.get_byte_count_retries(dev, NAK, Some(EOT))?;
-        self.get_byte_count_retries(dev, ACK, Some(EOT))?;
-        self.get_byte_count_retries(dev, CRC, None)?;
+        loop {
+            (dev.write_all(&[EOT]))?;
+
+            match (get_byte_timeout(dev))? {
+                Some(c) => {
+                    if c == NAK {
+                        break;
+                    } else {
+                        log::warn!("Expected ACK, got {}", c);
+                    }
+                }
+                None => warn!("Timeout waiting for ACK for EOT"),
+            }
+
+            self.errors += 1;
+
+            if self.errors >= self.max_errors {
+                eprint!(
+                    "Exhausted max retries ({}) while waiting for ACK for EOT",
+                    self.max_errors
+                );
+                return Err(Error::ExhaustedRetries);
+            }
+        }
+
+        loop {
+            (dev.write_all(&[EOT]))?;
+
+            match (get_byte_timeout(dev))? {
+                Some(c) => {
+                    if c == ACK {
+                        info!("YMODEM transmission successful");
+                        break;
+                    } else {
+                        log::warn!("Expected ACK, got {}", c);
+                    }
+                }
+                None => warn!("Timeout waiting for ACK for EOT"),
+            }
+
+            self.errors += 1;
+
+            if self.errors >= self.max_errors {
+                eprint!(
+                    "Exhausted max retries ({}) while waiting for ACK for EOT",
+                    self.max_errors
+                );
+                return Err(Error::ExhaustedRetries);
+            }
+        }
+
+        loop {
+            match (get_byte_timeout(dev))? {
+                Some(c) => {
+                    if c == CRC {
+                        info!("YMODEM transmission successful");
+                        break;
+                    } else {
+                        log::warn!("Expected ACK, got {}", c);
+                    }
+                }
+                None => warn!("Timeout waiting for ACK for EOT"),
+            }
+
+            self.errors += 1;
+
+            if self.errors >= self.max_errors {
+                eprint!(
+                    "Exhausted max retries ({}) while waiting for ACK for EOT",
+                    self.max_errors
+                );
+                return Err(Error::ExhaustedRetries);
+            }
+        }
 
         self.send_end_frame(dev)?;
 
@@ -421,39 +558,20 @@ impl Ymodem {
 
         (dev.write_all(&buff))?;
 
-        self.get_byte_count_retries(dev, ACK, None)?;
-
-        return Ok(());
-    }
-
-    /// Looks for specified byte while counting retries.
-    /// Panics if it encounters maximum number of retries.
-    ///
-    /// The byte_to_write variable can be set to send a byte
-    /// between reads or timeouts.
-    fn get_byte_count_retries<D: Read + Write>(
-        &mut self,
-        dev: &mut D,
-        wanted_byte: u8,
-        byte_to_write: Option<u8>,
-    ) -> Result<()> {
         loop {
-            match byte_to_write {
-                None => {}
-                Some(bt) => (dev.write_all(&[bt]))?,
-            };
-
             match (get_byte_timeout(dev))? {
                 Some(c) => {
                     if c == ACK {
-                        return Ok(());
+                        dbg!("Received ACK for start frame");
+                        break;
                     } else {
-                        warn!("Expected {}, got {}", wanted_byte, c);
+                        warn!("Expected ACK, got {}", c);
                     }
                     // TODO handle CAN bytes
                 }
-                None => warn!("Timeout waiting for {}", wanted_byte),
+                None => warn!("Timeout waiting for ACK for start frame"),
             }
+
             self.errors += 1;
             if self.errors >= self.max_errors {
                 eprint!(
@@ -463,5 +581,7 @@ impl Ymodem {
                 return Err(Error::ExhaustedRetries);
             }
         }
+
+        return Ok(());
     }
 }
