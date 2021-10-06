@@ -32,6 +32,10 @@ pub struct Ymodem {
     /// so if the message is not a multiple of that size the last block needs to be padded.
     pub pad_byte: u8,
 
+    /// Ignores all non-digit characters on the file_size string
+    /// in the start frame (Ex. 12345V becomes 12345)
+    pub ignore_non_digits_on_file_size: bool,
+
     errors: u32,
     initial_errors: u32,
 }
@@ -47,6 +51,7 @@ impl Ymodem {
             pad_byte: 0x1a,
             errors: 0,
             initial_errors: 0,
+            ignore_non_digits_on_file_size: false,
         }
     }
 
@@ -160,8 +165,13 @@ impl Ymodem {
             }
         }
 
-        let file_size_str =
-            std::str::from_utf8(&file_size_buf[0..file_size_buf.len() - 1]).unwrap();
+        let mut file_size_str =
+            std::string::String::from_utf8(file_size_buf[0..file_size_buf.len() - 1].to_vec())
+                .unwrap();
+        if self.ignore_non_digits_on_file_size {
+            file_size_str = file_size_str.chars().filter(|c| c.is_digit(10)).collect();
+        }
+
         let file_size_num: u32 = match file_size_str.parse::<u32>() {
             Ok(v) => v,
             // If the first parse fails, we try everything before the space
