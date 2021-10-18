@@ -185,12 +185,9 @@ impl Ymodem {
         };
         *file_size = file_size_num;
 
-        let num_of_packets = (file_size_num as f32 / 1024.0).ceil() as u32;
-        let final_packet = num_of_packets + 2;
         let mut received_first_eot = false;
 
-        for range in 0..(num_of_packets + 3) {
-            dbg!(range);
+        loop {
             match get_byte_timeout(dev)? {
                 bt @ Some(SOH) | bt @ Some(STX) => {
                     // Handle next packet
@@ -203,10 +200,10 @@ impl Ymodem {
                     let pnum_1c = (get_byte(dev))?; // same, 1's complemented
                                                     // We'll respond with cancel later if the packet number is wrong
 
-                    let cancel_packet = match range {
-                        // Final packet num is 0
-                        cp if cp == final_packet => 0x00 != pnum || (255 - pnum) != pnum_1c,
-                        _ => packet_num != pnum || (255 - pnum) != pnum_1c,
+                    let cancel_packet = if !received_first_eot {
+                        packet_num != pnum || (255 - pnum) != pnum_1c
+                    } else {
+                        0x00 != pnum || (255 - pnum) != pnum_1c
                     };
                     let mut data: Vec<u8> = Vec::new();
                     data.resize(packet_size, 0);
@@ -226,6 +223,10 @@ impl Ymodem {
                     } else {
                         (dev.write(&[NAK]))?;
                         self.errors += 1;
+                    }
+
+                    if received_first_eot {
+                        break;
                     }
                 }
                 Some(EOT) => {
