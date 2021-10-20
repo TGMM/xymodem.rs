@@ -3,7 +3,6 @@ pub use xymodem_util::*;
 
 // TODO: Send CAN byte after too many errors
 // TODO: Handle CAN bytes while sending
-// TODO: Implement Error for Error
 
 const SOH: u8 = 0x01;
 const STX: u8 = 0x02;
