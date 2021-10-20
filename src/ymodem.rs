@@ -481,6 +481,9 @@ impl Ymodem {
                 Some(c) => {
                     if c == NAK {
                         break;
+                    } else if c == ACK {
+                        log::info!("Expected NAK for EOT, got ACK");
+                        break;
                     } else {
                         log::warn!("Expected ACK, got {}", c);
                     }
