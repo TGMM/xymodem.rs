@@ -356,6 +356,7 @@ impl Ymodem {
 
         for byte in format!("{:x}", file_size_in_bytes).as_bytes() {
             buff[curr_buff_idx] = *byte;
+            curr_buff_idx += 1;
         }
 
         let crc = calc_crc(&buff[3..]);
