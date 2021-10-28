@@ -3,7 +3,6 @@ pub use xymodem_util::*;
 
 // TODO: Send CAN byte after too many errors
 // TODO: Handle CAN bytes while sending
-// TODO: Implement Error for Error
 
 const SOH: u8 = 0x01;
 const STX: u8 = 0x02;
@@ -81,11 +80,11 @@ impl Xmodem {
     pub fn send<D: Read + Write, R: Read>(&mut self, dev: &mut D, stream: &mut R) -> Result<()> {
         self.errors = 0;
 
-        dbg!("Starting XMODEM transfer");
+        debug!("Starting XMODEM transfer");
         (self.start_send(dev))?;
-        dbg!("First byte received. Sending stream.");
+        debug!("First byte received. Sending stream.");
         (self.send_stream(dev, stream))?;
-        dbg!("Sending EOT");
+        debug!("Sending EOT");
         (self.finish_send(dev))?;
 
         Ok(())
@@ -112,7 +111,7 @@ impl Xmodem {
         self.errors = 0;
         self.checksum_mode = checksum;
         let mut handled_first_packet = false;
-        dbg!("Starting XMODEM receive");
+        debug!("Starting XMODEM receive");
 
         let first_char;
         loop {
@@ -139,7 +138,7 @@ impl Xmodem {
                 }
             }
         }
-        dbg!("NCG sent. Receiving stream.");
+        debug!("NCG sent. Receiving stream.");
         let mut packet_num: u8 = 1;
         loop {
             match if handled_first_packet {
@@ -221,12 +220,12 @@ impl Xmodem {
             match (get_byte_timeout(dev))? {
                 Some(c) => match c {
                     NAK => {
-                        dbg!("Standard checksum requested");
+                        debug!("Standard checksum requested");
                         self.checksum_mode = Checksum::Standard;
                         return Ok(());
                     }
                     CRC => {
-                        dbg!("16-bit CRC requested");
+                        debug!("16-bit CRC requested");
                         self.checksum_mode = Checksum::CRC16;
                         return Ok(());
                     }
@@ -268,7 +267,7 @@ impl Xmodem {
             let mut buff = vec![self.pad_byte; self.block_length as usize + 3];
             let n = (stream.read(&mut buff[3..]))?;
             if n == 0 {
-                dbg!("Reached EOF");
+                debug!("Reached EOF");
                 return Ok(());
             }
 
@@ -292,13 +291,13 @@ impl Xmodem {
                 }
             }
 
-            dbg!("Sending block {}", block_num);
+            debug!("Sending block {}", block_num);
             (dev.write_all(&buff))?;
 
             match (get_byte_timeout(dev))? {
                 Some(c) => {
                     if c == ACK {
-                        dbg!("Received ACK for block {}", block_num);
+                        debug!("Received ACK for block {}", block_num);
                         continue;
                     } else {
                         warn!("Expected ACK, got {}", c);
