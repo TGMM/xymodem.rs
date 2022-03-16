@@ -201,15 +201,17 @@ impl Ymodem {
                                                     // We'll respond with cancel later if the packet number is wrong
 
                     let cancel_packet = if !received_first_eot {
-                        packet_num != pnum || (255 - pnum) != pnum_1c
+                        packet_num < pnum || (255 - pnum) != pnum_1c
                     } else {
                         0x00 != pnum || (255 - pnum) != pnum_1c
                     };
+
                     let mut data: Vec<u8> = Vec::new();
                     data.resize(packet_size, 0);
                     (dev.read_exact(&mut data))?;
                     let recv_checksum = (((get_byte(dev))? as u16) << 8) + (get_byte(dev))? as u16;
-                    let success = calc_crc(&data) == recv_checksum;
+                    let calculated_crc = calc_crc(&data);
+                    let success = calculated_crc == recv_checksum;
 
                     if cancel_packet {
                         (dev.write(&[CAN]))?;
@@ -217,9 +219,13 @@ impl Ymodem {
                         return Err(Error::Canceled);
                     }
                     if success {
-                        packet_num = packet_num.wrapping_add(1);
+                        if pnum >= packet_num {
+                            (file_buf.write_all(&data))?;
+                        }
+                        if packet_num == pnum {
+                            packet_num = packet_num.wrapping_add(1);
+                        }
                         (dev.write(&[ACK]))?;
-                        (file_buf.write_all(&data))?;
                     } else {
                         (dev.write(&[NAK]))?;
                         self.errors += 1;
