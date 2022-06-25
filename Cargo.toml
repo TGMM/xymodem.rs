@@ -7,9 +7,14 @@ repository = "https://github.com/TGMM/xymodem.rs"
 license = "MIT"
 description = "An implementation of the XMODEM and YMODEM file-transfer protocols."
 
+[[bin]]
+name = "xymodem-test"
+path = "src/test.rs"
+
 [dependencies]
 log = "^0.3"
 crc16 = "^0.3"
+serialport = "^4.0.1"
 
 [dev-dependencies]
 tempfile = "^2.0"
