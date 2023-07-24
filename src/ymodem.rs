@@ -439,7 +439,11 @@ impl Ymodem {
             }
 
             block_num += 1;
-            buff[0] = STX;
+            if packet_size == 128 {
+                buff[0] = SOH;
+            } else {
+                buff[0] = STX;
+            }
             buff[1] = (block_num & 0xFF) as u8;
             buff[2] = 0xFF - buff[1];
 
